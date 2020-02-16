@@ -6,6 +6,7 @@ Setup:
 
 * Python 3
 * pip3 install pydub
+* pip3 install simpleaudio
 * download ffmpeg or avconv
   * add to PATH (link below for help)
   * http://blog.gregzaal.com/how-to-install-ffmpeg-on-windows/
