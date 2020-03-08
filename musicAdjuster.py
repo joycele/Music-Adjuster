@@ -1,24 +1,31 @@
 # musicAdjuster.py
 
-import os, glob
-from pathlib import Path
-from pydub import AudioSegment
+import os
+from pydub import AudioSegment, effects
 from pydub.playback import play
+from pydub.utils import mediainfo
 
 
 class MusicAdjuster:
     def __init__(self, playlist):
         self.playlist = {}
-        for i in range(len(playlist)):
-            self.playlist[i] = playlist[i]
+        for i, track in enumerate(playlist):
+            self.playlist[i] = track
         print("refer to track keys:", self.playlist)
 
-    def loudness_volumes(self):
+    def show_playlist(self, volumes=False):
         for track in self.playlist:
-            s = AudioSegment.from_mp3(self.playlist[track])
-            print("track", track, ", song:", os.path.basename(self.playlist[track]), "loudness:", s.rms)
+            if volumes:
+                s = AudioSegment.from_mp3(self.playlist[track])
+                print("track", track, ", song:", os.path.basename(self.playlist[track]), "loudness:", s.max_dBFS)
+            else:
+                print("track", track, ", song:", os.path.basename(self.playlist[track]))
 
-    def extract_segment(self, s: AudioSegment, beginning=None, end=None) -> AudioSegment:
+    def play(self, track):
+        s = AudioSegment.from_mp3(self.playlist[track])
+        play(s)
+
+    def extract_segment(self, track: int, beginning=None, end=None) -> AudioSegment:
         '''
         return a splice of AudioSegment s starting at beginning and ending at end (in seconds)
 
@@ -28,6 +35,7 @@ class MusicAdjuster:
           - to extract a middle chunk, ie. from 00:10 - 00:20 of audio: extract_segment(s, beginning=10, end=20)
                     -  DO NOT USE NEGATIVES FOR EXTRACTING MIDDLE
         '''
+        s = AudioSegment.from_mp3(self.playlist[track])
         if not beginning and not end:
             return s
         if beginning and end:
@@ -44,12 +52,14 @@ class MusicAdjuster:
             return s[:end_e]
 
 
-    def remove_segment(self, s: AudioSegment, beginning=None, end=None) -> AudioSegment:
+    def remove_segment(self, track: int, beginning=None, end=None) -> AudioSegment:
         '''
         return AudioSegment s with a splice removed starting at beginning and ending at end (in seconds)
         for usage: see extract_segment docstring
-           - DO NOT USE NEGATIVES FOR REMOVING MIDDLE
+           - beginning == None --> remove starting chunk
+           - end == None --> removing ending chunk
         '''
+        s = AudioSegment.from_mp3(self.playlist[track])
         if not beginning and not end:
             return s
         if beginning and end:
@@ -68,15 +78,34 @@ class MusicAdjuster:
             end_r = end * 1000
             return s[end_r:]
 
-
-    def experiment(self):
-        #s = AudioSegment.from_mp3(self.playlist[track])
-        s = AudioSegment.from_mp3(self.playlist[37])
+    def splice_and_dice(self, track):
+        # do audio trimming and splicing here
+        s = AudioSegment.from_mp3(self.playlist[track])
+        s = self.remove_segment(track, beginning=-8) # remove from end
+        #s = self.remove_segment(track, end=3) # remove from beginning
+        #s = self.extract_segment(track, end=270)
+        #s = self.extract_segment(track, beginning=3, end=-20)
+        print("start play")
+        play(s[:10000]) # play first 10 seconds of track
+        play(s[-10000:]) # play last 10 seconds of track
+        print(s.duration_seconds)
         print(s.rms)
-        play(s)
-        #louder_s = s - 12
-        #print(louder_s.rms)
-        #play(louder_s)
+        #play(s)
+        #s.export(str(self.playlist[track]), format="mp3", tags=mediainfo(str(self.playlist[track])).get('TAG', {}))
 
-    def modify_song(self):
-        s = AudioSegment.from_mp3(self.playlist[44])
+    def normalize_playlist_volume(self, target_dBFS):
+        # adjust amplitude to the same level across all tracks in playlist
+        for track in self.playlist:
+            s = AudioSegment.from_mp3(self.playlist[track])
+            change_in_volume = target_dBFS - s.dBFS
+            normalized_track = s.apply_gain(change_in_volume)
+            print(self.playlist[track], "new volume:", normalized_track.dBFS)
+            normalized_track.export(str(self.playlist[track]), format="mp3", tags=mediainfo(str(self.playlist[track])).get('TAG', {}))
+
+    def normalize_single_file_volume(self, track):
+        # adjust and normalize audio within a single mp3 file
+        s = AudioSegment.from_mp3(self.playlist[track])
+        normalized_s = effects.normalize(s)
+        normalized_s.export(str(self.playlist[track]), format="mp3", tags=mediainfo(str(self.playlist[track])).get('TAG', {}))
+
+
